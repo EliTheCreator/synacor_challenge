@@ -1,5 +1,5 @@
 [package]
-name = "SynacorChallenge"
+name = "synacor_challenge"
 version = "0.1.0"
 authors = ["Elias Schmid <elischmi@student.ethz.ch>"]
 edition = "2018"
