@@ -1,8 +1,10 @@
+use std::collections::LinkedList;
 use std::fs;
 
-struct Machine {
+struct Machine<'a> {
     memory: Box<[u8; MEMORY_SIZE]>,
     registers: Box<[u16; NUMBER_OF_REGISTERS]>,
+    stack: &'a mut LinkedList<u16>,
 }
 
 const ADDRESS_RANGE: usize = 1 << 15;
@@ -141,9 +143,36 @@ fn get_addr(addr: usize) -> Option<Address> {
     }
 }
 
-fn bin_op(mut mem: &mut [u8; MEMORY_SIZE], op: fn(usize, usize) -> usize, instr: Instruction) {
-    let result: usize;
+fn comp_op(mut mach: &mut Machine, instr: Instruction) {
+    let raw_addr: usize;
+    let value: usize;
+    match instr {
+        Instruction::Eq(a, b, c) => {
+            raw_addr = a;
+            if b == c {
+                value = 1;
+            } else {
+                value = 0;
+            }
+        }
+        Instruction::Gt(a, b, c) => {
+            raw_addr = a;
+            if b >= c {
+                value = 1;
+            } else {
+                value = 0;
+            }
+        }
+        _ => return,
+    }
+
+    let addr: Address = get_addr(raw_addr).unwrap();
+    write_mem(&mut mach, addr, value);
+}
+
+fn bin_op(mut mach: &mut Machine, op: fn(usize, usize) -> usize, instr: Instruction) {
     let addr: Address;
+    let result: usize;
     match instr {
         Instruction::Add(a, b, c) | Instruction::Mult(a, b, c) => {
             addr = get_addr(a).unwrap();
@@ -153,18 +182,21 @@ fn bin_op(mut mem: &mut [u8; MEMORY_SIZE], op: fn(usize, usize) -> usize, instr:
             addr = get_addr(a).unwrap();
             result = op(b, c)
         }
-        _ => (),
+        _ => return,
     }
+    write_mem(&mut mach, addr, result);
 }
 
 fn main() {
     let file = fs::read("challenge.bin").unwrap();
     let mut machine: Machine;
+    let stack: &mut LinkedList<u16> = &mut LinkedList::new();
 
     unsafe {
         machine = Machine {
             memory: Box::new(MEMORY),
             registers: Box::new(REGISTERS),
+            stack: stack,
         }
     }
 
@@ -178,9 +210,94 @@ fn main() {
 
         match instr {
             Instruction::Halt => break,
+            Instruction::Set(a, b) => {
+                let addr: Address = get_addr(a).unwrap();
+                match addr {
+                    Address::Reg(_) => {
+                        write_mem(&mut machine, addr, b);
+                        ip += 2;
+                    }
+                    _ => (),
+                }
+            }
+            Instruction::Push(a) => {
+                machine.stack.push_front(a as u16);
+                ip += 2;
+            }
+            Instruction::Pop(a) => {
+                let address = get_addr(a).unwrap();
+                let value = machine.stack.pop_front().unwrap();
+                write_mem(&mut machine, address, value as usize);
+                ip += 2;
+            }
+            Instruction::Eq(_, _, _) | Instruction::Gt(_, _, _) => {
+                comp_op(&mut machine, instr);
+                ip += 4;
+            }
+            Instruction::Jmp(a) => ip = a as u16,
+            Instruction::Jt(a, b) => {
+                if a != 0 {
+                    ip = b as u16;
+                } else {
+                    ip += 3;
+                }
+            }
+            Instruction::Jf(a, b) => {
+                if a == 0 {
+                    ip = b as u16;
+                } else {
+                    ip += 3;
+                }
+            }
+            Instruction::Add(_, _, _) => {
+                bin_op(&mut machine, |x, y| x + y, instr);
+                ip += 4;
+            }
+            Instruction::Mult(_, _, _) => {
+                bin_op(&mut machine, |x, y| x * y, instr);
+                ip += 4;
+            }
+            Instruction::Mod(_, _, _) => {
+                bin_op(&mut machine, |x, y| x % y, instr);
+                ip += 4;
+            }
+            Instruction::And(_, _, _) => {
+                bin_op(&mut machine, |x, y| x & y, instr);
+                ip += 4;
+            }
+            Instruction::Or(_, _, _) => {
+                bin_op(&mut machine, |x, y| x | y, instr);
+                ip += 4;
+            }
+            Instruction::Not(a, b) => {
+                let addr: Address = get_addr(a).unwrap();
+                let value: usize = b ^ 0x7FFF;
+                write_mem(&mut machine, addr, value);
+                ip += 3;
+            }
+            Instruction::Rmem(a, b) => {
+                let addr_a: Address = get_addr(a).unwrap();
+                let addr_b: Address = get_addr(b).unwrap();
+                let value: usize = read_mem(&mut machine, addr_b);
+                write_mem(&mut machine, addr_a, value);
+                ip += 3;
+            }
+            Instruction::Wmem(a, b) => {
+                let addr: Address = get_addr(a).unwrap();
+                write_mem(&mut machine, addr, b);
+                ip += 3;
+            }
+            Instruction::Call(a) => {
+                machine.stack.push_front(ip + 2);
+                ip = a as u16;
+            }
+            Instruction::Ret => {
+                let value = machine.stack.pop_front().unwrap();
+                ip = value;
+            }
             Instruction::Out(a) => {
                 print!("{}", (a as u8) as char);
-                ip += 2
+                ip += 2;
             }
             Instruction::Noop => ip += 2,
             _ => break,
