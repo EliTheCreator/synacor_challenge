@@ -1,5 +1,5 @@
-use std::fs;
 use std::{collections::LinkedList, io::stdin};
+use std::{fs, vec::IntoIter};
 
 const ADDRESS_RANGE: usize = 1 << 15;
 const INTEGER_RANGE: usize = 1 << 15;
@@ -203,11 +203,11 @@ fn main() {
         machine.memory[i] = file[i];
     }
 
+    let mut input_iter: IntoIter<u8> = vec![].into_iter();
+
     let mut ip: u16 = 0;
     loop {
-        // println!("{}", ip);
         let instr: Instruction = get_op(&mut machine, ip).unwrap();
-        // println!("{}: {:?}", ip, instr);
 
         match instr {
             Instruction::Halt => break,
@@ -303,15 +303,24 @@ fn main() {
                 ip += 2;
             }
             Instruction::In(a) => {
-                print!("Please enter some text: ");
-                let mut input = String::new();
-                stdin()
-                    .read_line(&mut input)
-                    .expect("Did not enter a correct string");
+                if input_iter.len() == 0 {
+                    let mut input = String::new();
+                    stdin()
+                        .read_line(&mut input)
+                        .expect("Did not enter a correct string");
+
+                    input_iter = input.into_bytes().into_iter();
+                }
+
+                write_mem(
+                    &mut machine,
+                    get_addr(a).unwrap(),
+                    input_iter.next().unwrap() as u16,
+                );
+
+                ip += 2;
             }
             Instruction::Noop => ip += 1,
-            _ => break,
         }
     }
-    println!("{:?}", machine.registers);
 }
