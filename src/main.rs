@@ -18,26 +18,26 @@ static mut REGISTERS: [u16; NUMBER_OF_REGISTERS] = [0; NUMBER_OF_REGISTERS];
 #[repr(usize)]
 enum Instruction {
     Halt,
-    Set(usize, usize),
-    Push(usize),
-    Pop(usize),
-    Eq(usize, usize, usize),
-    Gt(usize, usize, usize),
-    Jmp(usize),
-    Jt(usize, usize),
-    Jf(usize, usize),
-    Add(usize, usize, usize),
-    Mult(usize, usize, usize),
-    Mod(usize, usize, usize),
-    And(usize, usize, usize),
-    Or(usize, usize, usize),
-    Not(usize, usize),
-    Rmem(usize, usize),
-    Wmem(usize, usize),
-    Call(usize),
+    Set(u16, u16),
+    Push(u16),
+    Pop(u16),
+    Eq(u16, u16, u16),
+    Gt(u16, u16, u16),
+    Jmp(u16),
+    Jt(u16, u16),
+    Jf(u16, u16),
+    Add(u16, u16, u16),
+    Mult(u16, u16, u16),
+    Mod(u16, u16, u16),
+    And(u16, u16, u16),
+    Or(u16, u16, u16),
+    Not(u16, u16),
+    Rmem(u16, u16),
+    Wmem(u16, u16),
+    Call(u16),
     Ret,
-    Out(usize),
-    In(usize),
+    Out(u16),
+    In(u16),
     Noop,
 }
 
@@ -48,22 +48,22 @@ enum Address {
     Reg(usize),
 }
 
-fn read_mem(mach: &mut Machine, address: Address) -> usize {
+fn read_mem(mach: &mut Machine, address: Address) -> u16 {
     match address {
         Address::Mem(raw_addr) => {
             let addr: usize = (raw_addr as usize) << 1;
-            let lower: usize = mach.memory[addr] as usize;
-            let upper: usize = (mach.memory[addr + 1] as usize) << 8;
-            upper ^ lower
+            let lower: u16 = mach.memory[addr] as u16;
+            let upper: u16 = (mach.memory[addr + 1] as u16) << 8;
+            upper | lower
         }
         Address::Reg(raw_addr) => {
             let addr: usize = raw_addr - MEMORY_SIZE;
-            mach.registers[addr] as usize
+            mach.registers[addr]
         }
     }
 }
 
-fn write_mem(mach: &mut Machine, address: Address, value: usize) {
+fn write_mem(mach: &mut Machine, address: Address, value: u16) {
     match address {
         Address::Mem(raw_addr) => {
             let addr: usize = (raw_addr as usize) << 1;
@@ -80,8 +80,8 @@ fn write_mem(mach: &mut Machine, address: Address, value: usize) {
 }
 
 fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
-    let addr = get_addr(raw_addr as usize).unwrap();
-    let instr: usize = read_mem(&mut mach, addr);
+    let addr = get_addr(raw_addr).unwrap();
+    let instr: u16 = read_mem(&mut mach, addr);
     match instr {
         0 | 18 | 21 => match instr {
             0 => Some(Instruction::Halt),
@@ -90,7 +90,7 @@ fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
             _ => None,
         },
         2 | 3 | 6 | 17 | 19 | 20 => {
-            let a: usize = read_mem(&mut mach, get_addr((raw_addr + 1) as usize).unwrap());
+            let a: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
             match instr {
                 2 => Some(Instruction::Push(a)),
                 3 => Some(Instruction::Pop(a)),
@@ -102,8 +102,8 @@ fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
             }
         }
         1 | 7 | 8 | 14 | 15 | 16 => {
-            let a: usize = read_mem(&mut mach, get_addr((raw_addr + 1) as usize).unwrap());
-            let b: usize = read_mem(&mut mach, get_addr((raw_addr + 2) as usize).unwrap());
+            let a: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
+            let b: u16 = read_mem(&mut mach, get_addr(raw_addr + 2).unwrap());
             match instr {
                 1 => Some(Instruction::Set(a, b)),
                 7 => Some(Instruction::Jt(a, b)),
@@ -115,9 +115,9 @@ fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
             }
         }
         4 | 5 | 9 | 10 | 11 | 12 | 13 => {
-            let a: usize = read_mem(&mut mach, get_addr((raw_addr + 1) as usize).unwrap());
-            let b: usize = read_mem(&mut mach, get_addr((raw_addr + 2) as usize).unwrap());
-            let c: usize = read_mem(&mut mach, get_addr((raw_addr + 3) as usize).unwrap());
+            let a: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
+            let b: u16 = read_mem(&mut mach, get_addr(raw_addr + 2).unwrap());
+            let c: u16 = read_mem(&mut mach, get_addr(raw_addr + 3).unwrap());
             match instr {
                 4 => Some(Instruction::Eq(a, b, c)),
                 5 => Some(Instruction::Gt(a, b, c)),
@@ -133,19 +133,19 @@ fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
     }
 }
 
-fn get_addr(addr: usize) -> Option<Address> {
-    if addr < ADDRESS_RANGE {
-        Some(Address::Mem(addr as u16))
-    } else if addr < ADDRESS_RANGE + NUMBER_OF_REGISTERS {
-        Some(Address::Reg(addr - ADDRESS_RANGE))
+fn get_addr(addr: u16) -> Option<Address> {
+    if (addr as usize) < ADDRESS_RANGE {
+        Some(Address::Mem(addr))
+    } else if (addr as usize) < ADDRESS_RANGE + NUMBER_OF_REGISTERS {
+        Some(Address::Reg((addr as usize) - ADDRESS_RANGE))
     } else {
         None
     }
 }
 
 fn comp_op(mut mach: &mut Machine, instr: Instruction) {
-    let raw_addr: usize;
-    let value: usize;
+    let raw_addr: u16;
+    let value: u16;
     match instr {
         Instruction::Eq(a, b, c) => {
             raw_addr = a;
@@ -176,15 +176,15 @@ fn bin_op(mut mach: &mut Machine, op: fn(usize, usize) -> usize, instr: Instruct
     match instr {
         Instruction::Add(a, b, c) | Instruction::Mult(a, b, c) => {
             addr = get_addr(a).unwrap();
-            result = op(b, c) % INTEGER_RANGE
+            result = op(b as usize, c as usize) % INTEGER_RANGE
         }
         Instruction::Mod(a, b, c) | Instruction::And(a, b, c) | Instruction::Or(a, b, c) => {
             addr = get_addr(a).unwrap();
-            result = op(b, c)
+            result = op(b as usize, c as usize)
         }
         _ => return,
     }
-    write_mem(&mut mach, addr, result);
+    write_mem(&mut mach, addr, result as u16);
 }
 
 fn main() {
@@ -206,7 +206,9 @@ fn main() {
 
     let mut ip: u16 = 0;
     loop {
+        // println!("{}", ip);
         let instr: Instruction = get_op(&mut machine, ip).unwrap();
+        // println!("{:?}", instr);
 
         match instr {
             Instruction::Halt => break,
@@ -227,7 +229,7 @@ fn main() {
             Instruction::Pop(a) => {
                 let address = get_addr(a).unwrap();
                 let value = machine.stack.pop_front().unwrap();
-                write_mem(&mut machine, address, value as usize);
+                write_mem(&mut machine, address, value);
                 ip += 2;
             }
             Instruction::Eq(_, _, _) | Instruction::Gt(_, _, _) => {
@@ -271,14 +273,14 @@ fn main() {
             }
             Instruction::Not(a, b) => {
                 let addr: Address = get_addr(a).unwrap();
-                let value: usize = b ^ 0x7FFF;
+                let value: u16 = b ^ 0x7FFFu16;
                 write_mem(&mut machine, addr, value);
                 ip += 3;
             }
             Instruction::Rmem(a, b) => {
                 let addr_a: Address = get_addr(a).unwrap();
                 let addr_b: Address = get_addr(b).unwrap();
-                let value: usize = read_mem(&mut machine, addr_b);
+                let value: u16 = read_mem(&mut machine, addr_b);
                 write_mem(&mut machine, addr_a, value);
                 ip += 3;
             }
