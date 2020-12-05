@@ -107,7 +107,6 @@ fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
         }
         1 | 7 | 8 | 14 | 15 | 16 => {
             let a_raw: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
-            let b_raw: u16 = read_mem(&mut mach, get_addr(raw_addr + 2).unwrap());
             let a: u16 = get_oprnd_value(&mut mach, raw_addr + 1);
             let b: u16 = get_oprnd_value(&mut mach, raw_addr + 2);
             match instr {
@@ -115,14 +114,13 @@ fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
                 7 => Some(Instruction::Jt(a, b)),
                 8 => Some(Instruction::Jf(a, b)),
                 14 => Some(Instruction::Not(a_raw, b)),
-                15 => Some(Instruction::Rmem(a_raw, b_raw)),
+                15 => Some(Instruction::Rmem(a_raw, b)),
                 16 => Some(Instruction::Wmem(a, b)),
                 _ => None,
             }
         }
         4 | 5 | 9 | 10 | 11 | 12 | 13 => {
             let a_raw: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
-            // let a: u16 = get_oprnd_value(&mut mach, raw_addr + 1);
             let b: u16 = get_oprnd_value(&mut mach, raw_addr + 2);
             let c: u16 = get_oprnd_value(&mut mach, raw_addr + 3);
             match instr {
@@ -289,14 +287,7 @@ fn main() {
             Instruction::Rmem(a, b) => {
                 let addr_a: Address = get_addr(a).unwrap();
                 let addr_b: Address = get_addr(b).unwrap();
-                let value: u16 = match addr_b {
-                    Address::Mem(_) => read_mem(&mut machine, addr_b),
-                    Address::Reg(_) => {
-                        let temp_value: u16 = read_mem(&mut machine, addr_b);
-                        let addr_b2: Address = get_addr(temp_value).unwrap();
-                        read_mem(&mut machine, addr_b2)
-                    }
-                };
+                let value: u16 = read_mem(&mut machine, addr_b);
                 write_mem(&mut machine, addr_a, value);
                 ip += 3;
             }
