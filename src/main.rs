@@ -1,18 +1,16 @@
 use std::fs;
 use std::{collections::LinkedList, io::stdin};
 
-struct Machine<'a> {
-    memory: Box<[u8; MEMORY_SIZE]>,
-    registers: Box<[u16; NUMBER_OF_REGISTERS]>,
-    stack: &'a mut LinkedList<u16>,
-}
-
 const ADDRESS_RANGE: usize = 1 << 15;
 const INTEGER_RANGE: usize = 1 << 15;
 const MEMORY_SIZE: usize = 1 << 16;
 const NUMBER_OF_REGISTERS: usize = 8;
-static mut MEMORY: [u8; MEMORY_SIZE] = [0; MEMORY_SIZE];
-static mut REGISTERS: [u16; NUMBER_OF_REGISTERS] = [0; NUMBER_OF_REGISTERS];
+
+struct Machine<'a> {
+    memory: Box<Vec<u8>>,
+    registers: Box<Vec<u16>>,
+    stack: &'a mut LinkedList<u16>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Instruction {
@@ -194,16 +192,12 @@ fn bin_op(mut mach: &mut Machine, op: fn(usize, usize) -> usize, instr: Instruct
 
 fn main() {
     let file = fs::read("challenge.bin").unwrap();
-    let mut machine: Machine;
     let stack: &mut LinkedList<u16> = &mut LinkedList::new();
-
-    unsafe {
-        machine = Machine {
-            memory: Box::new(MEMORY),
-            registers: Box::new(REGISTERS),
-            stack: stack,
-        }
-    }
+    let mut machine: Machine = Machine {
+        memory: Box::new(vec![0u8; MEMORY_SIZE]),
+        registers: Box::new(vec![0u16; NUMBER_OF_REGISTERS]),
+        stack: stack,
+    };
 
     for i in 0..file.len() {
         machine.memory[i] = file[i];
