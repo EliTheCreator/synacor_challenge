@@ -1,5 +1,5 @@
-use std::collections::LinkedList;
 use std::fs;
+use std::{collections::LinkedList, io::stdin};
 
 struct Machine<'a> {
     memory: Box<[u8; MEMORY_SIZE]>,
@@ -15,7 +15,6 @@ static mut MEMORY: [u8; MEMORY_SIZE] = [0; MEMORY_SIZE];
 static mut REGISTERS: [u16; NUMBER_OF_REGISTERS] = [0; NUMBER_OF_REGISTERS];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(usize)]
 enum Instruction {
     Halt,
     Set(u16, u16),
@@ -42,7 +41,6 @@ enum Instruction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(usize)]
 enum Address {
     Mem(u16),
     Reg(usize),
@@ -56,10 +54,7 @@ fn read_mem(mach: &mut Machine, address: Address) -> u16 {
             let upper: u16 = (mach.memory[addr + 1] as u16) << 8;
             upper | lower
         }
-        Address::Reg(raw_addr) => {
-            let addr: usize = raw_addr - MEMORY_SIZE;
-            mach.registers[addr]
-        }
+        Address::Reg(addr) => mach.registers[addr],
     }
 }
 
@@ -72,10 +67,18 @@ fn write_mem(mach: &mut Machine, address: Address, value: u16) {
             mach.memory[addr] = lower;
             mach.memory[addr + 1] = upper;
         }
-        Address::Reg(raw_addr) => {
-            let addr: usize = raw_addr - MEMORY_SIZE;
+        Address::Reg(addr) => {
             mach.registers[addr] = value as u16;
         }
+    }
+}
+
+fn get_oprnd_value(mut mach: &mut Machine, raw_addr: u16) -> u16 {
+    let value: u16 = read_mem(&mut mach, get_addr(raw_addr).unwrap());
+    if (value as usize) < INTEGER_RANGE {
+        return value;
+    } else {
+        read_mem(&mut mach, get_addr(value).unwrap())
     }
 }
 
@@ -90,42 +93,46 @@ fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
             _ => None,
         },
         2 | 3 | 6 | 17 | 19 | 20 => {
-            let a: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
+            let a_raw: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
+            let a: u16 = get_oprnd_value(&mut mach, raw_addr + 1);
             match instr {
                 2 => Some(Instruction::Push(a)),
-                3 => Some(Instruction::Pop(a)),
+                3 => Some(Instruction::Pop(a_raw)),
                 6 => Some(Instruction::Jmp(a)),
                 17 => Some(Instruction::Call(a)),
                 19 => Some(Instruction::Out(a)),
-                20 => Some(Instruction::In(a)),
+                20 => Some(Instruction::In(a_raw)),
                 _ => None,
             }
         }
         1 | 7 | 8 | 14 | 15 | 16 => {
-            let a: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
-            let b: u16 = read_mem(&mut mach, get_addr(raw_addr + 2).unwrap());
+            let a_raw: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
+            let b_raw: u16 = read_mem(&mut mach, get_addr(raw_addr + 2).unwrap());
+            let a: u16 = get_oprnd_value(&mut mach, raw_addr + 1);
+            let b: u16 = get_oprnd_value(&mut mach, raw_addr + 2);
             match instr {
-                1 => Some(Instruction::Set(a, b)),
+                1 => Some(Instruction::Set(a_raw, b)),
                 7 => Some(Instruction::Jt(a, b)),
                 8 => Some(Instruction::Jf(a, b)),
-                14 => Some(Instruction::Not(a, b)),
-                15 => Some(Instruction::Rmem(a, b)),
+                14 => Some(Instruction::Not(a_raw, b)),
+                15 => Some(Instruction::Rmem(a_raw, b_raw)),
                 16 => Some(Instruction::Wmem(a, b)),
                 _ => None,
             }
         }
         4 | 5 | 9 | 10 | 11 | 12 | 13 => {
-            let a: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
-            let b: u16 = read_mem(&mut mach, get_addr(raw_addr + 2).unwrap());
-            let c: u16 = read_mem(&mut mach, get_addr(raw_addr + 3).unwrap());
+            let a_raw: u16 = read_mem(&mut mach, get_addr(raw_addr + 1).unwrap());
+            // let a: u16 = get_oprnd_value(&mut mach, raw_addr + 1);
+            let b: u16 = get_oprnd_value(&mut mach, raw_addr + 2);
+            let c: u16 = get_oprnd_value(&mut mach, raw_addr + 3);
             match instr {
-                4 => Some(Instruction::Eq(a, b, c)),
-                5 => Some(Instruction::Gt(a, b, c)),
-                9 => Some(Instruction::Add(a, b, c)),
-                10 => Some(Instruction::Mult(a, b, c)),
-                11 => Some(Instruction::Mod(a, b, c)),
-                12 => Some(Instruction::And(a, b, c)),
-                13 => Some(Instruction::Or(a, b, c)),
+                4 => Some(Instruction::Eq(a_raw, b, c)),
+                5 => Some(Instruction::Gt(a_raw, b, c)),
+                9 => Some(Instruction::Add(a_raw, b, c)),
+                10 => Some(Instruction::Mult(a_raw, b, c)),
+                11 => Some(Instruction::Mod(a_raw, b, c)),
+                12 => Some(Instruction::And(a_raw, b, c)),
+                13 => Some(Instruction::Or(a_raw, b, c)),
                 _ => None,
             }
         }
@@ -157,7 +164,7 @@ fn comp_op(mut mach: &mut Machine, instr: Instruction) {
         }
         Instruction::Gt(a, b, c) => {
             raw_addr = a;
-            if b >= c {
+            if b > c {
                 value = 1;
             } else {
                 value = 0;
@@ -208,7 +215,7 @@ fn main() {
     loop {
         // println!("{}", ip);
         let instr: Instruction = get_op(&mut machine, ip).unwrap();
-        // println!("{:?}", instr);
+        // println!("{}: {:?}", ip, instr);
 
         match instr {
             Instruction::Halt => break,
@@ -217,13 +224,15 @@ fn main() {
                 match addr {
                     Address::Reg(_) => {
                         write_mem(&mut machine, addr, b);
-                        ip += 2;
+                        ip += 3;
                     }
-                    _ => (),
+                    _ => {
+                        println!("Set operand is not an argument");
+                    }
                 }
             }
             Instruction::Push(a) => {
-                machine.stack.push_front(a as u16);
+                machine.stack.push_front(a);
                 ip += 2;
             }
             Instruction::Pop(a) => {
@@ -236,17 +245,17 @@ fn main() {
                 comp_op(&mut machine, instr);
                 ip += 4;
             }
-            Instruction::Jmp(a) => ip = a as u16,
+            Instruction::Jmp(a) => ip = a,
             Instruction::Jt(a, b) => {
                 if a != 0 {
-                    ip = b as u16;
+                    ip = b;
                 } else {
                     ip += 3;
                 }
             }
             Instruction::Jf(a, b) => {
                 if a == 0 {
-                    ip = b as u16;
+                    ip = b;
                 } else {
                     ip += 3;
                 }
@@ -280,7 +289,14 @@ fn main() {
             Instruction::Rmem(a, b) => {
                 let addr_a: Address = get_addr(a).unwrap();
                 let addr_b: Address = get_addr(b).unwrap();
-                let value: u16 = read_mem(&mut machine, addr_b);
+                let value: u16 = match addr_b {
+                    Address::Mem(_) => read_mem(&mut machine, addr_b),
+                    Address::Reg(_) => {
+                        let temp_value: u16 = read_mem(&mut machine, addr_b);
+                        let addr_b2: Address = get_addr(temp_value).unwrap();
+                        read_mem(&mut machine, addr_b2)
+                    }
+                };
                 write_mem(&mut machine, addr_a, value);
                 ip += 3;
             }
@@ -291,7 +307,7 @@ fn main() {
             }
             Instruction::Call(a) => {
                 machine.stack.push_front(ip + 2);
-                ip = a as u16;
+                ip = a;
             }
             Instruction::Ret => {
                 let value = machine.stack.pop_front().unwrap();
@@ -301,8 +317,16 @@ fn main() {
                 print!("{}", (a as u8) as char);
                 ip += 2;
             }
-            Instruction::Noop => ip += 2,
+            Instruction::In(a) => {
+                print!("Please enter some text: ");
+                let mut input = String::new();
+                stdin()
+                    .read_line(&mut input)
+                    .expect("Did not enter a correct string");
+            }
+            Instruction::Noop => ip += 1,
             _ => break,
         }
     }
+    println!("{:?}", machine.registers);
 }
