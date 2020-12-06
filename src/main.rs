@@ -1,13 +1,16 @@
-use std::{collections::LinkedList, io::stdin};
-use std::{fs, vec::IntoIter};
+use byteorder::{LittleEndian, ReadBytesExt};
+use std::collections::LinkedList;
+use std::fs;
+use std::io::{stdin, Cursor};
+use std::vec::IntoIter;
 
 const ADDRESS_RANGE: usize = 1 << 15;
 const INTEGER_RANGE: usize = 1 << 15;
-const MEMORY_SIZE: usize = 1 << 16;
+const MEMORY_SIZE: usize = 1 << 15;
 const NUMBER_OF_REGISTERS: usize = 8;
 
 struct Machine<'a> {
-    memory: Box<Vec<u8>>,
+    memory: Box<Vec<u16>>,
     registers: Box<Vec<u16>>,
     stack: &'a mut LinkedList<u16>,
 }
@@ -40,31 +43,20 @@ enum Instruction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Address {
-    Mem(u16),
+    Mem(usize),
     Reg(usize),
 }
 
 fn read_mem(mach: &mut Machine, address: Address) -> u16 {
     match address {
-        Address::Mem(raw_addr) => {
-            let addr: usize = (raw_addr as usize) << 1;
-            let lower: u16 = mach.memory[addr] as u16;
-            let upper: u16 = (mach.memory[addr + 1] as u16) << 8;
-            upper | lower
-        }
+        Address::Mem(addr) => mach.memory[addr],
         Address::Reg(addr) => mach.registers[addr],
     }
 }
 
 fn write_mem(mach: &mut Machine, address: Address, value: u16) {
     match address {
-        Address::Mem(raw_addr) => {
-            let addr: usize = (raw_addr as usize) << 1;
-            let lower: u8 = value as u8;
-            let upper: u8 = (value >> 8) as u8;
-            mach.memory[addr] = lower;
-            mach.memory[addr + 1] = upper;
-        }
+        Address::Mem(addr) => mach.memory[addr] = value,
         Address::Reg(addr) => {
             mach.registers[addr] = value as u16;
         }
@@ -138,7 +130,7 @@ fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
 
 fn get_addr(addr: u16) -> Option<Address> {
     if (addr as usize) < ADDRESS_RANGE {
-        Some(Address::Mem(addr))
+        Some(Address::Mem(addr as usize))
     } else if (addr as usize) < ADDRESS_RANGE + NUMBER_OF_REGISTERS {
         Some(Address::Reg((addr as usize) - ADDRESS_RANGE))
     } else {
@@ -192,16 +184,19 @@ fn bin_op(mut mach: &mut Machine, op: fn(usize, usize) -> usize, instr: Instruct
 
 fn main() {
     let file = fs::read("challenge.bin").unwrap();
+
+    let file_size = file.len() / 2;
+    let mut buffer: [u16; MEMORY_SIZE] = [0; MEMORY_SIZE];
+    let mut rdr: Cursor<Vec<u8>> = Cursor::new(file);
+    rdr.read_u16_into::<LittleEndian>(&mut buffer[0..file_size])
+        .unwrap();
+
     let stack: &mut LinkedList<u16> = &mut LinkedList::new();
     let mut machine: Machine = Machine {
-        memory: Box::new(vec![0u8; MEMORY_SIZE]),
+        memory: Box::new(buffer.to_vec()),
         registers: Box::new(vec![0u16; NUMBER_OF_REGISTERS]),
-        stack: stack,
+        stack,
     };
-
-    for i in 0..file.len() {
-        machine.memory[i] = file[i];
-    }
 
     let mut input_iter: IntoIter<u8> = vec![].into_iter();
 
