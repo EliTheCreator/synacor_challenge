@@ -13,6 +13,7 @@ struct Machine<'a> {
     memory: Box<Vec<u16>>,
     registers: Box<Vec<u16>>,
     stack: &'a mut LinkedList<u16>,
+    ip: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +73,8 @@ fn get_oprnd_value(mut mach: &mut Machine, raw_addr: u16) -> u16 {
     }
 }
 
-fn get_op(mut mach: &mut Machine, raw_addr: u16) -> Option<Instruction> {
+fn get_op(mut mach: &mut Machine) -> Option<Instruction> {
+    let raw_addr: u16 = mach.ip;
     let addr = get_addr(raw_addr).unwrap();
     let instr: u16 = read_mem(&mut mach, addr);
     match instr {
@@ -196,13 +198,13 @@ fn main() {
         memory: Box::new(buffer.to_vec()),
         registers: Box::new(vec![0u16; NUMBER_OF_REGISTERS]),
         stack,
+        ip: 0u16,
     };
 
     let mut input_iter: IntoIter<u8> = vec![].into_iter();
 
-    let mut ip: u16 = 0;
     loop {
-        let instr: Instruction = get_op(&mut machine, ip).unwrap();
+        let instr: Instruction = get_op(&mut machine).unwrap();
 
         match instr {
             Instruction::Halt => break,
@@ -211,7 +213,7 @@ fn main() {
                 match addr {
                     Address::Reg(_) => {
                         write_mem(&mut machine, addr, b);
-                        ip += 3;
+                        machine.ip += 3;
                     }
                     _ => {
                         println!("Set operand is not an argument");
@@ -220,82 +222,82 @@ fn main() {
             }
             Instruction::Push(a) => {
                 machine.stack.push_front(a);
-                ip += 2;
+                machine.ip += 2;
             }
             Instruction::Pop(a) => {
                 let address = get_addr(a).unwrap();
                 let value = machine.stack.pop_front().unwrap();
                 write_mem(&mut machine, address, value);
-                ip += 2;
+                machine.ip += 2;
             }
             Instruction::Eq(_, _, _) | Instruction::Gt(_, _, _) => {
                 comp_op(&mut machine, instr);
-                ip += 4;
+                machine.ip += 4;
             }
-            Instruction::Jmp(a) => ip = a,
+            Instruction::Jmp(a) => machine.ip = a,
             Instruction::Jt(a, b) => {
                 if a != 0 {
-                    ip = b;
+                    machine.ip = b;
                 } else {
-                    ip += 3;
+                    machine.ip += 3;
                 }
             }
             Instruction::Jf(a, b) => {
                 if a == 0 {
-                    ip = b;
+                    machine.ip = b;
                 } else {
-                    ip += 3;
+                    machine.ip += 3;
                 }
             }
             Instruction::Add(_, _, _) => {
                 bin_op(&mut machine, |x, y| x + y, instr);
-                ip += 4;
+                machine.ip += 4;
             }
             Instruction::Mult(_, _, _) => {
                 bin_op(&mut machine, |x, y| x * y, instr);
-                ip += 4;
+                machine.ip += 4;
             }
             Instruction::Mod(_, _, _) => {
                 bin_op(&mut machine, |x, y| x % y, instr);
-                ip += 4;
+                machine.ip += 4;
             }
             Instruction::And(_, _, _) => {
                 bin_op(&mut machine, |x, y| x & y, instr);
-                ip += 4;
+                machine.ip += 4;
             }
             Instruction::Or(_, _, _) => {
                 bin_op(&mut machine, |x, y| x | y, instr);
-                ip += 4;
+                machine.ip += 4;
             }
             Instruction::Not(a, b) => {
                 let addr: Address = get_addr(a).unwrap();
                 let value: u16 = b ^ 0x7FFFu16;
                 write_mem(&mut machine, addr, value);
-                ip += 3;
+                machine.ip += 3;
             }
             Instruction::Rmem(a, b) => {
                 let addr_a: Address = get_addr(a).unwrap();
                 let addr_b: Address = get_addr(b).unwrap();
                 let value: u16 = read_mem(&mut machine, addr_b);
                 write_mem(&mut machine, addr_a, value);
-                ip += 3;
+                machine.ip += 3;
             }
             Instruction::Wmem(a, b) => {
                 let addr: Address = get_addr(a).unwrap();
                 write_mem(&mut machine, addr, b);
-                ip += 3;
+                machine.ip += 3;
             }
             Instruction::Call(a) => {
-                machine.stack.push_front(ip + 2);
-                ip = a;
+                machine.stack.push_front(machine.ip + 2);
+                machine.ip = a;
             }
             Instruction::Ret => {
                 let value = machine.stack.pop_front().unwrap();
-                ip = value;
+                machine.ip = value;
             }
             Instruction::Out(a) => {
                 print!("{}", (a as u8) as char);
-                ip += 2;
+                machine.ip += 2;
             }
             Instruction::In(a) => {
                 if input_iter.len() == 0 {
@@ -313,9 +315,9 @@ fn main() {
                     input_iter.next().unwrap() as u16,
                 );
 
-                ip += 2;
+                machine.ip += 2;
             }
-            Instruction::Noop => ip += 1,
+            Instruction::Noop => machine.ip += 1,
         }
     }
 }
